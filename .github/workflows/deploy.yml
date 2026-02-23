@@ -114,14 +114,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Cleanup conflicting resources
-        run: |
-          BUCKET="rozellerz.com-website"
-          if aws s3 ls "s3://$BUCKET" 2>/dev/null; then
-            aws s3 rm "s3://$BUCKET" --recursive 2>/dev/null || true
-            aws s3 rb "s3://$BUCKET" 2>/dev/null || true
-          fi
-
       - name: Deploy hosting stack
         run: |
           aws cloudformation deploy \
