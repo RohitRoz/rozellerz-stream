@@ -129,15 +129,15 @@ jobs:
             echo "Stack absent or stuck ($STATUS) — cleaning up orphaned resources"
 
             # S3 bucket
-            if aws s3 ls "s3://rozellerz.com-website" 2>/dev/null; then
-              aws s3 rm "s3://rozellerz.com-website" --recursive 2>/dev/null
-              aws s3 rb "s3://rozellerz.com-website" 2>/dev/null
+            if aws s3 ls "s3://rozelle-stream-website" 2>/dev/null; then
+              aws s3 rm "s3://rozelle-stream-website" --recursive 2>/dev/null
+              aws s3 rb "s3://rozelle-stream-website" 2>/dev/null
               echo "Deleted bucket"
             fi
 
             # OAC
             OAC_ID=$(aws cloudfront list-origin-access-controls \
-              --query "OriginAccessControlList.Items[?Name=='rozellerz.com-oac'].Id" \
+              --query "OriginAccessControlList.Items[?Name=='rozelle-stream-oac'].Id" \
               --output text 2>/dev/null)
             if [ -n "$OAC_ID" ] && [ "$OAC_ID" != "None" ]; then
               ETAG=$(aws cloudfront get-origin-access-control --id "$OAC_ID" --query "ETag" --output text 2>/dev/null)
@@ -146,10 +146,10 @@ jobs:
             fi
 
             # CloudFront function
-            FN_ETAG=$(aws cloudfront describe-function --name "rewrite-index" \
+            FN_ETAG=$(aws cloudfront describe-function --name "rozelle-stream-rewrite" \
               --query "ETag" --output text 2>/dev/null)
             if [ -n "$FN_ETAG" ] && [ "$FN_ETAG" != "None" ]; then
-              aws cloudfront delete-function --name "rewrite-index" --if-match "$FN_ETAG" 2>/dev/null
+              aws cloudfront delete-function --name "rozelle-stream-rewrite" --if-match "$FN_ETAG" 2>/dev/null
               echo "Deleted CF function"
             fi
 
