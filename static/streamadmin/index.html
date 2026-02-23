@@ -296,7 +296,7 @@
   <div id="toast"></div>
 
   <script>
-    const API_URL = 'YOUR_API_GATEWAY_URL/state';
+    const API_URL = 'https://sufiouvrz6.execute-api.us-east-1.amazonaws.com/live/state';
 
     const connDot   = document.getElementById('conn-dot');
     const connLabel = document.getElementById('conn-label');
@@ -364,6 +364,7 @@
         document.getElementById('prev-project').textContent = payload.latestProject  || '—';
         showToast('✓  Stream updated', 'ok');
         setConnStatus(true);
+        setTimeout(loadState, 800); // re-sync preview from server
       } catch (e) {
         showToast('Update failed — check API URL', 'err');
         setConnStatus(false);
@@ -374,7 +375,7 @@
     }
 
     loadState();
-    setInterval(loadState, 15000);
+    setInterval(loadState, 5000);
   </script>
 </body>
 </html>

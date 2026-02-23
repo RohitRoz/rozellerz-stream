@@ -199,29 +199,30 @@ html, body {
 .brand-bg {
   position: absolute; left: 1411px; top: 1px; right: 1px; bottom: 1px;
   background: var(--green-pale); border-radius: 0 7px 7px 0; overflow: hidden;
+  display: flex; align-items: center; padding: 0 24px; gap: 0;
 }
 .brand-bg::before {
   content: ''; position: absolute; inset: 0;
   background-image: repeating-linear-gradient(-45deg, transparent 0px, transparent 7px, rgba(26,122,74,0.06) 7px, rgba(26,122,74,0.06) 8px);
+  pointer-events: none;
 }
 .brand-wordmark {
-  position: absolute; left: 1430px; top: 50%; transform: translateY(-50%);
-  display: flex; align-items: baseline;
+  display: flex; align-items: baseline; flex-shrink: 0;
   font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800;
 }
 .brand-roz  { color: var(--green); letter-spacing: 2px; }
 .brand-e    { color: var(--dark); font-style: italic; }
 .brand-lle  { color: var(--green); letter-spacing: 2px; }
 .brand-sub-divider {
-  position: absolute; left: 1618px; top: 18px; bottom: 18px;
+  flex-shrink: 0; align-self: stretch;
   width: 1px; background: rgba(26,122,74,0.3);
+  margin: 18px 20px;
 }
 .brand-links {
-  position: absolute; left: 1634px; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
 }
-.brand-links-label { font-family: 'Space Mono', monospace; font-size: 8px; letter-spacing: 3px; color: rgba(13,42,26,0.4); }
-.brand-links-url   { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--green); }
+.brand-links-label { font-family: 'Space Mono', monospace; font-size: 8px; letter-spacing: 3px; color: rgba(13,42,26,0.4); white-space: nowrap; }
+.brand-links-url   { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--green); white-space: nowrap; }
 
 /* ── API STATUS DOT ─────────────────────────────────────────── */
 #api-status {
@@ -342,14 +343,15 @@ html, body {
   <div class="bar-divider" style="left:1410px"></div>
 
   <!-- Brand bg -->
-  <div class="brand-bg"></div>
-  <div class="brand-wordmark">
-    <span class="brand-roz">ROZ</span><span class="brand-e">E</span><span class="brand-lle">LLE</span>
-  </div>
-  <div class="brand-sub-divider"></div>
-  <div class="brand-links">
-    <span class="brand-links-label">LINKS</span>
-    <span class="brand-links-url">linktr.ee/rozelle</span>
+  <div class="brand-bg">
+    <div class="brand-wordmark">
+      <span class="brand-roz">ROZ</span><span class="brand-e">E</span><span class="brand-lle">LLE</span>
+    </div>
+    <div class="brand-sub-divider"></div>
+    <div class="brand-links">
+      <span class="brand-links-label">LINKS</span>
+      <span class="brand-links-url">linktr.ee/rozelle</span>
+    </div>
   </div>
 
   <!-- Col 1 -->
@@ -447,7 +449,7 @@ document.addEventListener('keydown', e => {
 
 // ── API + LIVE DATA ────────────────────────────────────────────
 const API_URL = 'https://sufiouvrz6.execute-api.us-east-1.amazonaws.com/live/state';
-const POLL_MS  = 5000;
+const POLL_MS  = 2000;
 const dot      = document.getElementById('api-status');
 
 function setText(id, value) {
