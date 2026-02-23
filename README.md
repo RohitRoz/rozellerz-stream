@@ -31,12 +31,6 @@ static/overlay.html            → OBS Browser Source overlay
 | `AWS_ACCESS_KEY_ID` | IAM user access key |
 | `AWS_SECRET_ACCESS_KEY` | IAM user secret key |
 
-### GitHub variable (Settings → Variables → Actions)
-
-| Variable | Value |
-|---|---|
-| `AWS_ACCOUNT_ID` | `882951811364` |
-
 ### Clean up manually-created resources before first push
 
 ```bash
