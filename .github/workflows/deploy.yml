@@ -1,8 +1,6 @@
 name: Deploy Rozelle Stream
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 env:
