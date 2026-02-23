@@ -2,6 +2,12 @@ name: Deploy Rozelle Stream
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'static/**'
+      - 'lambda/**'
+      - 'cloudformation/**'
 
 env:
   AWS_REGION: us-east-1
