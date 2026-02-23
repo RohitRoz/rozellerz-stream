@@ -1,186 +1,483 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rozelle Stream Overlay</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono&display=swap" rel="stylesheet"/>
+<meta charset="UTF-8"/>
+<title>Rozelle Stream Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono&display=swap" rel="stylesheet"/>
+<style>
+/* ── RESET & CANVAS ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --green:      #1a7a4a;
+  --green-mid:  #22a060;
+  --green-pale: #edfaf3;
+  --white:      #ffffff;
+  --bg:         #f5f9f6;
+  --dark:       #0d2a1a;
+  --muted:      #2d5c3f;
+}
+html, body {
+  width: 1920px; height: 1080px;
+  overflow: hidden;
+  background: transparent;
+}
 
-  <style>
-    :root {
-      --green:      #1a7a4a;
-      --green-mid:  #22a060;
-      --green-pale: #edfaf3;
-      --white:      #ffffff;
-      --bg:         #f5f9f6;
-      --dark:       #0d2a1a;
-      --muted:      #2d5c3f;
-      --right-w:   250px;
-      --bottom-h:  111px;
-      --gap:        10px;
-      --margin:     20px;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
-    body {
-      background-color: var(--bg);
-      background-image: radial-gradient(circle, rgba(26,122,74,0.12) 1px, transparent 1px);
-      background-size: 28px 28px;
-    }
-    .blob { position: absolute; border-radius: 50%; pointer-events: none; z-index: 0; }
-    .blob-1 { width: 920px; height: 680px; top: -200px; right: 80px; background: radial-gradient(ellipse, rgba(34,160,96,0.10) 0%, transparent 70%); }
-    .blob-2 { width: 640px; height: 500px; bottom: -120px; left: 200px; background: radial-gradient(ellipse, rgba(26,122,74,0.08) 0%, transparent 70%); }
-    .stripe { height: 3px; border-radius: 1.5px; background: linear-gradient(to right, var(--green) 0%, var(--green-mid) 55%, transparent 100%); position: absolute; top: 0; left: 0; right: 0; }
-    .panel { position: absolute; background: var(--white); border: 1.5px solid rgba(26,122,74,0.50); border-radius: 8px; overflow: hidden; }
-    .panel-label { font-family: 'Syne', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 4px; color: var(--green); opacity: 0.75; position: absolute; top: 13px; left: 15px; text-transform: uppercase; }
-    #main { top: var(--margin); left: var(--margin); right: calc(var(--right-w) + var(--gap) + var(--margin)); bottom: calc(var(--bottom-h) + var(--gap) + var(--margin)); background: rgba(255,255,255,0.03); border: 1.5px solid rgba(26,122,74,0.45); border-radius: 8px; }
-    #main::before { content: ''; position: absolute; top: -1.5px; left: -1.5px; width: 34px; height: 34px; border-top: 3px solid var(--green); border-left: 3px solid var(--green); border-radius: 8px 0 0 0; }
-    #main::after  { content: ''; position: absolute; bottom: -1.5px; right: -1.5px; width: 34px; height: 34px; border-bottom: 3px solid var(--green); border-right: 3px solid var(--green); border-radius: 0 0 8px 0; }
-    #live-badge { position: absolute; top: 14px; left: 14px; display: flex; align-items: center; gap: 8px; background: var(--white); border: 1.5px solid rgba(26,122,74,0.45); border-radius: 14px; padding: 4px 14px 4px 10px; font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 3px; color: var(--green); }
-    .live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green-mid); box-shadow: 0 0 0 3px rgba(34,160,96,0.25); animation: pulse 2s ease-in-out infinite; }
-    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(34,160,96,0.25); } 50% { box-shadow: 0 0 0 6px rgba(34,160,96,0.10); } }
-    #facecam { top: var(--margin); right: var(--margin); width: var(--right-w); height: 222px; }
-    .cam-viewport { position: absolute; top: 42px; left: 15px; right: 15px; bottom: 12px; background: var(--green-pale); border: 1.5px solid rgba(26,122,74,0.20); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 10px; letter-spacing: 4px; color: rgba(26,122,74,0.22); }
-    #chat { top: calc(var(--margin) + 222px + var(--gap)); right: var(--margin); width: var(--right-w); bottom: calc(var(--bottom-h) + var(--gap) + var(--margin)); overflow: hidden; }
-    #chat-messages { position: absolute; top: 36px; left: 15px; right: 15px; bottom: 10px; overflow: hidden; display: flex; flex-direction: column-reverse; gap: 0; }
-    .chat-msg { padding: 8px 0; border-top: 1px solid rgba(26,122,74,0.12); animation: fadein 0.4s ease; }
-    .chat-msg:first-child { border-top: none; }
-    @keyframes fadein { from { opacity:0; transform: translateY(4px); } to { opacity:1; } }
-    .chat-user { font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 700; color: var(--green); margin-bottom: 3px; }
-    .chat-text { font-family: 'Space Mono', monospace; font-size: 9.5px; color: var(--muted); line-height: 1.4; }
-    #bottom { left: var(--margin); right: var(--margin); bottom: var(--margin); height: var(--bottom-h); }
-    .col-divider { position: absolute; top: 10px; bottom: 10px; width: 1px; background: rgba(26,122,74,0.15); }
-    .bar-col { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; gap: 14px; padding: 0 18px; }
-    .bar-icon { width: 76px; height: 52px; flex-shrink: 0; background: var(--green-pale); border: 1.5px solid rgba(26,122,74,0.2); border-radius: 5px; }
-    .bar-content { display: flex; flex-direction: column; gap: 4px; }
-    .bar-label { font-family: 'Syne', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 3px; color: var(--green); text-transform: uppercase; }
-    .bar-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px; transition: opacity 0.3s; }
-    .bar-badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 8.5px; font-family: 'Syne', sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 2px; white-space: nowrap; }
-    .badge-now  { background: #d4f0e0; border: 1px solid rgba(26,122,74,0.4); color: var(--green); }
-    .badge-next { background: rgba(26,122,74,0.07); border: 1px solid rgba(26,122,74,0.28); color: var(--muted); }
-    .bar-meta { font-family: 'Space Mono', monospace; font-size: 10px; color: rgba(13,42,26,0.4); }
-    .col-1 { left: 0;     width: 470px; }
-    .col-2 { left: 470px; width: 470px; }
-    .col-3 { left: 940px; width: 470px; }
-    .col-4 { left: 1410px; right: 0; }
-    .brand-bg { position: absolute; left: 1411px; top: 1px; right: 1px; bottom: 1px; background: var(--green-pale); border-radius: 0 7px 7px 0; overflow: hidden; }
-    .brand-bg::before { content: ''; position: absolute; inset: 0; background-image: repeating-linear-gradient(-45deg, transparent 0px, transparent 7px, rgba(26,122,74,0.06) 7px, rgba(26,122,74,0.06) 8px); }
-    .brand-wordmark { display: flex; align-items: baseline; gap: 0; position: absolute; left: 1430px; top: 50%; transform: translateY(-50%); }
-    .brand-roz { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: var(--green); letter-spacing: 2px; }
-    .brand-e   { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: var(--dark); font-style: italic; }
-    .brand-lle { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; color: var(--green); letter-spacing: 2px; }
-    .brand-divider { position: absolute; left: 1618px; top: 18px; bottom: 18px; width: 1px; background: rgba(26,122,74,0.3); }
-    .brand-links { position: absolute; left: 1634px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; }
-    .brand-links-label { font-family: 'Space Mono', monospace; font-size: 8px; letter-spacing: 3px; color: rgba(13,42,26,0.4); }
-    .brand-links-url { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--green); }
-    .updating { opacity: 0.5; }
-    @keyframes flash { 0%,100% { background: transparent; } 50% { background: rgba(34,160,96,0.08); } }
-    .flash { animation: flash 0.4s ease; }
-    #api-status { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: #ccc; transition: background 0.4s; }
-    #api-status.ok  { background: var(--green-mid); }
-    #api-status.err { background: #e05555; }
-  </style>
+/* ── BACKGROUND ─────────────────────────────────────────────── */
+#comp-background {
+  position: absolute; inset: 0;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, rgba(26,122,74,0.12) 1px, transparent 1px);
+  background-size: 28px 28px;
+  z-index: 0;
+}
+.blob {
+  position: absolute; border-radius: 50%; pointer-events: none;
+}
+.blob-1 {
+  width: 920px; height: 680px; top: -200px; right: 80px;
+  background: radial-gradient(ellipse, rgba(34,160,96,0.10) 0%, transparent 70%);
+}
+.blob-2 {
+  width: 640px; height: 500px; bottom: -120px; left: 200px;
+  background: radial-gradient(ellipse, rgba(26,122,74,0.08) 0%, transparent 70%);
+}
+
+/* ── SHARED PANEL STYLE ─────────────────────────────────────── */
+.panel {
+  position: absolute;
+  background: var(--white);
+  border: 1.5px solid rgba(26,122,74,0.50);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.panel-stripe {
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(to right, var(--green) 0%, var(--green-mid) 55%, transparent 100%);
+  border-radius: 1.5px;
+}
+.panel-label {
+  position: absolute; top: 13px; left: 15px;
+  font-family: 'Syne', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 4px; color: var(--green); opacity: 0.75;
+  text-transform: uppercase;
+}
+
+/* ── MAIN AREA ──────────────────────────────────────────────── */
+#comp-main {
+  position: absolute;
+  top: 20px; left: 20px; right: 270px; bottom: 131px;
+  background: rgba(255,255,255,0.03);
+  border: 1.5px solid rgba(26,122,74,0.45);
+  border-radius: 8px;
+  z-index: 1;
+}
+#comp-main::before {
+  content: ''; position: absolute;
+  top: -1.5px; left: -1.5px; width: 34px; height: 34px;
+  border-top: 3px solid var(--green);
+  border-left: 3px solid var(--green);
+  border-radius: 8px 0 0 0;
+}
+#comp-main::after {
+  content: ''; position: absolute;
+  bottom: -1.5px; right: -1.5px; width: 34px; height: 34px;
+  border-bottom: 3px solid var(--green);
+  border-right: 3px solid var(--green);
+  border-radius: 0 0 8px 0;
+}
+.main-watermark {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+  fill: var(--green); fill-opacity: 0.09; letter-spacing: 8px;
+  color: rgba(26,122,74,0.09); white-space: nowrap;
+}
+
+/* ── LIVE BADGE ─────────────────────────────────────────────── */
+#comp-live-badge {
+  position: absolute; top: 34px; left: 34px;
+  display: flex; align-items: center; gap: 8px;
+  background: white;
+  border: 1.5px solid rgba(26,122,74,0.45);
+  border-radius: 14px; padding: 4px 14px 4px 10px;
+  font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: 3px; color: var(--green);
+  z-index: 3;
+}
+.live-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--green-mid);
+  box-shadow: 0 0 0 3px rgba(34,160,96,0.25);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { box-shadow: 0 0 0 3px rgba(34,160,96,0.25); }
+  50%      { box-shadow: 0 0 0 6px rgba(34,160,96,0.10); }
+}
+
+/* ── FACECAM ────────────────────────────────────────────────── */
+#comp-facecam {
+  top: 20px; right: 20px; width: 250px; height: 222px;
+  z-index: 2;
+}
+.cam-viewport {
+  position: absolute; top: 42px; left: 15px; right: 15px; bottom: 12px;
+  background: var(--green-pale);
+  border: 1.5px solid rgba(26,122,74,0.20); border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Syne', sans-serif; font-size: 10px; letter-spacing: 4px;
+  color: rgba(26,122,74,0.22);
+}
+.cam-grid-h, .cam-grid-v {
+  position: absolute;
+  background: rgba(26,122,74,0.07);
+}
+.cam-grid-h { left: 15px; right: 15px; height: 1px; }
+.cam-grid-v { top: 42px; bottom: 12px; width: 1px; }
+
+/* ── CHAT ───────────────────────────────────────────────────── */
+#comp-chat {
+  top: 252px; right: 20px; width: 250px; bottom: 131px;
+  z-index: 2;
+}
+#chat-messages {
+  position: absolute; top: 36px; left: 15px; right: 15px; bottom: 10px;
+  overflow: hidden; display: flex; flex-direction: column-reverse; gap: 0;
+}
+.chat-msg { padding: 8px 0; border-top: 1px solid rgba(26,122,74,0.12); animation: fadein 0.4s ease; }
+.chat-msg:first-child { border-top: none; }
+@keyframes fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; } }
+.chat-user { font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 700; color: var(--green); margin-bottom: 3px; }
+.chat-text { font-family: 'Space Mono', monospace; font-size: 9.5px; color: var(--muted); line-height: 1.4; }
+
+/* ── BOTTOM BAR ─────────────────────────────────────────────── */
+#comp-bottom {
+  left: 20px; right: 20px; bottom: 20px; height: 111px;
+  z-index: 2;
+}
+.bar-divider {
+  position: absolute; top: 10px; bottom: 10px; width: 1px;
+  background: rgba(26,122,74,0.15);
+}
+
+/* bar columns */
+.bar-col {
+  position: absolute; top: 0; bottom: 0;
+  display: flex; align-items: center; gap: 14px; padding: 0 18px;
+}
+.bar-icon {
+  width: 76px; height: 52px; flex-shrink: 0;
+  background: var(--green-pale);
+  border: 1.5px solid rgba(26,122,74,0.2); border-radius: 5px;
+}
+.bar-content { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bar-label {
+  font-family: 'Syne', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 3px; color: var(--green); text-transform: uppercase; white-space: nowrap;
+}
+.bar-title {
+  font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+  color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 300px; transition: opacity 0.3s;
+}
+.bar-badge {
+  display: inline-flex; align-items: center; padding: 2px 10px;
+  border-radius: 8.5px; font-family: 'Syne', sans-serif; font-size: 9px;
+  font-weight: 700; letter-spacing: 2px; white-space: nowrap; width: fit-content;
+}
+.badge-now  { background: #d4f0e0; border: 1px solid rgba(26,122,74,0.4); color: var(--green); }
+.badge-next { background: rgba(26,122,74,0.07); border: 1px solid rgba(26,122,74,0.28); color: var(--muted); }
+.bar-meta   { font-family: 'Space Mono', monospace; font-size: 10px; color: rgba(13,42,26,0.4); }
+
+.col-1 { left: 0;     width: 470px; }
+.col-2 { left: 470px; width: 470px; }
+.col-3 { left: 940px; width: 470px; }
+.col-4 { left: 1410px; right: 0; }
+
+/* brand col */
+.brand-bg {
+  position: absolute; left: 1411px; top: 1px; right: 1px; bottom: 1px;
+  background: var(--green-pale); border-radius: 0 7px 7px 0; overflow: hidden;
+}
+.brand-bg::before {
+  content: ''; position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(-45deg, transparent 0px, transparent 7px, rgba(26,122,74,0.06) 7px, rgba(26,122,74,0.06) 8px);
+}
+.brand-wordmark {
+  position: absolute; left: 1430px; top: 50%; transform: translateY(-50%);
+  display: flex; align-items: baseline;
+  font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800;
+}
+.brand-roz  { color: var(--green); letter-spacing: 2px; }
+.brand-e    { color: var(--dark); font-style: italic; }
+.brand-lle  { color: var(--green); letter-spacing: 2px; }
+.brand-sub-divider {
+  position: absolute; left: 1618px; top: 18px; bottom: 18px;
+  width: 1px; background: rgba(26,122,74,0.3);
+}
+.brand-links {
+  position: absolute; left: 1634px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.brand-links-label { font-family: 'Space Mono', monospace; font-size: 8px; letter-spacing: 3px; color: rgba(13,42,26,0.4); }
+.brand-links-url   { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--green); }
+
+/* ── API STATUS DOT ─────────────────────────────────────────── */
+#api-status {
+  position: absolute; top: 8px; right: 8px; width: 8px; height: 8px;
+  border-radius: 50%; background: #ccc; transition: background 0.4s; z-index: 9999;
+}
+#api-status.ok  { background: var(--green-mid); }
+#api-status.err { background: #e05555; }
+
+/* ── DATA UPDATE ANIMATION ──────────────────────────────────── */
+.updating { opacity: 0.5; }
+@keyframes flash { 0%,100% { background: transparent; } 50% { background: rgba(34,160,96,0.08); } }
+.flash { animation: flash 0.4s ease; }
+
+/* ── COMPONENT VISIBILITY ───────────────────────────────────── */
+.comp { transition: opacity 0.3s; }
+.comp.hidden { opacity: 0; pointer-events: none; }
+
+/* ── CONTROL PANEL ──────────────────────────────────────────── */
+#control-panel {
+  position: fixed; top: 40px; left: 40px;
+  background: rgba(13,42,26,0.92);
+  border: 1px solid rgba(34,160,96,0.4);
+  border-radius: 10px; padding: 20px 24px;
+  font-family: 'Syne', sans-serif; color: white;
+  z-index: 99999; min-width: 280px;
+  backdrop-filter: blur(8px);
+  display: none;
+}
+#control-panel.open { display: block; }
+#control-panel h2 {
+  font-size: 11px; font-weight: 700; letter-spacing: 4px;
+  color: var(--green-mid); margin-bottom: 16px; text-transform: uppercase;
+}
+.ctrl-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
+}
+.ctrl-toggle:last-child { border-bottom: none; }
+.ctrl-label { font-size: 12px; font-weight: 600; letter-spacing: 1px; }
+.ctrl-switch {
+  width: 36px; height: 20px; border-radius: 10px;
+  background: rgba(255,255,255,0.15); position: relative;
+  transition: background 0.2s; flex-shrink: 0;
+}
+.ctrl-switch.on { background: var(--green-mid); }
+.ctrl-switch::after {
+  content: ''; position: absolute;
+  top: 3px; left: 3px; width: 14px; height: 14px;
+  border-radius: 50%; background: white;
+  transition: transform 0.2s;
+}
+.ctrl-switch.on::after { transform: translateX(16px); }
+.ctrl-hint {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  font-size: 10px; letter-spacing: 2px; color: rgba(255,255,255,0.3);
+  text-align: center;
+}
+</style>
 </head>
 <body>
+
+<div id="api-status"></div>
+
+<!-- ══ CONTROL PANEL (press ` to open) ══════════════════════════ -->
+<div id="control-panel">
+  <h2>Stream Components</h2>
+  <!-- toggles injected by JS -->
+  <div class="ctrl-hint">PRESS ` TO CLOSE</div>
+</div>
+
+<!-- ══ COMPONENTS ═══════════════════════════════════════════════ -->
+
+<!-- Background -->
+<div id="comp-background" class="comp">
   <div class="blob blob-1"></div>
   <div class="blob blob-2"></div>
-  <div id="api-status"></div>
+</div>
 
-  <div id="main">
-    <div id="live-badge"><div class="live-dot"></div>LIVE</div>
+<!-- Main area -->
+<div id="comp-main" class="comp">
+  <span class="main-watermark">MAIN CONTENT AREA</span>
+</div>
+
+<!-- Live badge -->
+<div id="comp-live-badge" class="comp">
+  <div class="live-dot"></div>
+  LIVE
+</div>
+
+<!-- Facecam -->
+<div id="comp-facecam" class="panel comp">
+  <div class="panel-stripe"></div>
+  <span class="panel-label">Face Cam</span>
+  <div class="cam-viewport">
+    <div class="cam-grid-v" style="left:calc(15px + 73px)"></div>
+    <div class="cam-grid-v" style="left:calc(15px + 147px)"></div>
+    <div class="cam-grid-h" style="top:calc(42px + 59px)"></div>
+    <div class="cam-grid-h" style="top:calc(42px + 119px)"></div>
+    CAMERA
+  </div>
+</div>
+
+<!-- Chat -->
+<div id="comp-chat" class="panel comp">
+  <div class="panel-stripe"></div>
+  <span class="panel-label">Chat</span>
+  <div id="chat-messages"></div>
+</div>
+
+<!-- Bottom bar -->
+<div id="comp-bottom" class="panel comp">
+  <div class="panel-stripe"></div>
+  <div class="bar-divider" style="left:470px"></div>
+  <div class="bar-divider" style="left:940px"></div>
+  <div class="bar-divider" style="left:1410px"></div>
+
+  <!-- Brand bg -->
+  <div class="brand-bg"></div>
+  <div class="brand-wordmark">
+    <span class="brand-roz">ROZ</span><span class="brand-e">E</span><span class="brand-lle">LLE</span>
+  </div>
+  <div class="brand-sub-divider"></div>
+  <div class="brand-links">
+    <span class="brand-links-label">LINKS</span>
+    <span class="brand-links-url">linktr.ee/rozelle</span>
   </div>
 
-  <div id="facecam" class="panel">
-    <div class="stripe"></div>
-    <span class="panel-label">Face Cam</span>
-    <div class="cam-viewport">CAMERA</div>
-  </div>
-
-  <div id="chat" class="panel">
-    <div class="stripe"></div>
-    <span class="panel-label">Chat</span>
-    <div id="chat-messages"></div>
-  </div>
-
-  <div id="bottom" class="panel">
-    <div class="stripe"></div>
-    <div class="col-divider" style="left:470px"></div>
-    <div class="col-divider" style="left:940px"></div>
-    <div class="col-divider" style="left:1410px"></div>
-    <div class="brand-bg"></div>
-    <div class="brand-wordmark">
-      <span class="brand-roz">ROZ</span>
-      <span class="brand-e">E</span>
-      <span class="brand-lle">LLE</span>
-    </div>
-    <div class="brand-divider"></div>
-    <div class="brand-links">
-      <span class="brand-links-label">LINKS</span>
-      <span class="brand-links-url">linktr.ee/rozelle</span>
-    </div>
-    <div class="bar-col col-1">
-      <div class="bar-icon"></div>
-      <div class="bar-content">
-        <span class="bar-label">Current Segment</span>
-        <span class="bar-title" id="current-segment">—</span>
-        <span class="bar-badge badge-now" id="current-status">ON NOW</span>
-      </div>
-    </div>
-    <div class="bar-col col-2">
-      <div class="bar-icon"></div>
-      <div class="bar-content">
-        <span class="bar-label">Coming Up</span>
-        <span class="bar-title" id="coming-up">—</span>
-        <span class="bar-badge badge-next">UP NEXT</span>
-      </div>
-    </div>
-    <div class="bar-col col-3">
-      <div class="bar-icon"></div>
-      <div class="bar-content">
-        <span class="bar-label">Latest Project</span>
-        <span class="bar-title" id="latest-project">—</span>
-        <span class="bar-meta" id="latest-project-meta"></span>
-      </div>
+  <!-- Col 1 -->
+  <div id="comp-col-segment" class="bar-col col-1 comp">
+    <div class="bar-icon"></div>
+    <div class="bar-content">
+      <span class="bar-label">Current Segment</span>
+      <span class="bar-title" id="current-segment">—</span>
+      <span class="bar-badge badge-now" id="current-status">ON NOW</span>
     </div>
   </div>
 
-  <script>
-    const API_URL = 'YOUR_API_GATEWAY_URL/state';
-    const POLL_INTERVAL_MS = 5000;
-    const statusDot = document.getElementById('api-status');
+  <!-- Col 2 -->
+  <div id="comp-col-coming" class="bar-col col-2 comp">
+    <div class="bar-icon"></div>
+    <div class="bar-content">
+      <span class="bar-label">Coming Up</span>
+      <span class="bar-title" id="coming-up">—</span>
+      <span class="bar-badge badge-next">UP NEXT</span>
+    </div>
+  </div>
 
-    function setText(id, value) {
-      const el = document.getElementById(id);
-      if (!el || el.textContent === value) return;
-      el.classList.add('updating');
-      setTimeout(() => {
-        el.textContent = value;
-        el.classList.remove('updating');
-        el.closest('.bar-col')?.classList.add('flash');
-        setTimeout(() => el.closest('.bar-col')?.classList.remove('flash'), 400);
-      }, 150);
-    }
+  <!-- Col 3 -->
+  <div id="comp-col-project" class="bar-col col-3 comp">
+    <div class="bar-icon"></div>
+    <div class="bar-content">
+      <span class="bar-label">Latest Project</span>
+      <span class="bar-title" id="latest-project">—</span>
+      <span class="bar-meta" id="latest-project-meta"></span>
+    </div>
+  </div>
+</div>
 
-    async function fetchState() {
-      try {
-        const res = await fetch(API_URL, { cache: 'no-store' });
-        if (!res.ok) throw new Error(res.status);
-        const data = await res.json();
-        setText('current-segment',     data.currentSegment     ?? '—');
-        setText('current-status',      data.currentStatus      ?? 'ON NOW');
-        setText('coming-up',           data.comingUp           ?? '—');
-        setText('latest-project',      data.latestProject      ?? '—');
-        setText('latest-project-meta', data.latestProjectMeta  ?? '');
-        statusDot.className = 'ok';
-      } catch (e) {
-        statusDot.className = 'err';
-      }
-    }
+<script>
+// ── COMPONENT REGISTRY ─────────────────────────────────────────
+const COMPONENTS = [
+  { id: 'comp-background',   label: 'Background'       },
+  { id: 'comp-main',         label: 'Main Area'         },
+  { id: 'comp-live-badge',   label: 'Live Badge'        },
+  { id: 'comp-facecam',      label: 'Face Cam'          },
+  { id: 'comp-chat',         label: 'Chat'              },
+  { id: 'comp-bottom',       label: 'Bottom Bar'        },
+  { id: 'comp-col-segment',  label: '↳ Current Segment' },
+  { id: 'comp-col-coming',   label: '↳ Coming Up'       },
+  { id: 'comp-col-project',  label: '↳ Latest Project'  },
+];
 
-    fetchState();
-    setInterval(fetchState, POLL_INTERVAL_MS);
-  </script>
+// ── LOAD STATE ─────────────────────────────────────────────────
+const state = JSON.parse(localStorage.getItem('overlay-components') || '{}');
+
+function isVisible(id) {
+  return state[id] !== false; // default ON
+}
+
+function setVisible(id, visible) {
+  state[id] = visible;
+  localStorage.setItem('overlay-components', JSON.stringify(state));
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('hidden', !visible);
+}
+
+// ── APPLY SAVED STATE ──────────────────────────────────────────
+COMPONENTS.forEach(({ id }) => {
+  if (!isVisible(id)) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  }
+});
+
+// ── BUILD CONTROL PANEL ────────────────────────────────────────
+const panel = document.getElementById('control-panel');
+COMPONENTS.forEach(({ id, label }) => {
+  const row = document.createElement('div');
+  row.className = 'ctrl-toggle';
+  const lbl = document.createElement('span');
+  lbl.className = 'ctrl-label';
+  lbl.textContent = label;
+  const sw = document.createElement('div');
+  sw.className = 'ctrl-switch' + (isVisible(id) ? ' on' : '');
+  row.appendChild(lbl);
+  row.appendChild(sw);
+  row.addEventListener('click', () => {
+    const nowVisible = !isVisible(id);
+    setVisible(id, nowVisible);
+    sw.classList.toggle('on', nowVisible);
+  });
+  // insert before the hint div
+  panel.insertBefore(row, panel.querySelector('.ctrl-hint'));
+});
+
+// ── TOGGLE CONTROL PANEL ───────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === '`') panel.classList.toggle('open');
+});
+
+// ── API + LIVE DATA ────────────────────────────────────────────
+const API_URL = 'https://sufiouvrz6.execute-api.us-east-1.amazonaws.com/live/state';
+const POLL_MS  = 5000;
+const dot      = document.getElementById('api-status');
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (!el || el.textContent === value) return;
+  el.classList.add('updating');
+  setTimeout(() => {
+    el.textContent = value;
+    el.classList.remove('updating');
+    el.closest('.bar-col')?.classList.add('flash');
+    setTimeout(() => el.closest('.bar-col')?.classList.remove('flash'), 400);
+  }, 150);
+}
+
+async function fetchState() {
+  try {
+    const res = await fetch(API_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    const d = await res.json();
+    setText('current-segment',     d.currentSegment     ?? '—');
+    setText('current-status',      d.currentStatus      ?? 'ON NOW');
+    setText('coming-up',           d.comingUp           ?? '—');
+    setText('latest-project',      d.latestProject      ?? '—');
+    setText('latest-project-meta', d.latestProjectMeta  ?? '');
+    dot.className = 'ok';
+  } catch { dot.className = 'err'; }
+}
+
+fetchState();
+setInterval(fetchState, POLL_MS);
+</script>
 </body>
 </html>
