@@ -1,6 +1,6 @@
 # rozelle-stream
 
-Infrastructure-as-code and static files for Rozelle's live stream setup.
+Infrastructure-as-code and static files for Rozelle's stream setup.
 
 ## Structure
 
