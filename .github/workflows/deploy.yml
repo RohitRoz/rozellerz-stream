@@ -1,0 +1,197 @@
+name: Deploy Rozelle Stream
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  BACKEND_STACK: rozelle-stream-backend
+  HOSTING_STACK: rozelle-stream-hosting
+  ARTIFACTS_BUCKET: rozelle-stream-artifacts-${{ vars.AWS_ACCOUNT_ID }}
+  DOMAIN: rozellerz.com
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      hosting: ${{ steps.filter.outputs.hosting }}
+      static:  ${{ steps.filter.outputs.static }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'lambda/**'
+              - 'cloudformation/backend.yaml'
+            hosting:
+              - 'cloudformation/hosting.yaml'
+            static:
+              - 'static/**'
+
+  deploy-backend:
+    name: Deploy Backend Stack
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure artifacts bucket exists
+        run: |
+          if ! aws s3 ls "s3://${{ env.ARTIFACTS_BUCKET }}" 2>/dev/null; then
+            aws s3 mb "s3://${{ env.ARTIFACTS_BUCKET }}" --region ${{ env.AWS_REGION }}
+            aws s3api put-bucket-versioning --bucket "${{ env.ARTIFACTS_BUCKET }}" --versioning-configuration Status=Enabled
+            aws s3api put-public-access-block --bucket "${{ env.ARTIFACTS_BUCKET }}" \
+              --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+          fi
+
+      - name: Package CloudFormation
+        run: |
+          aws cloudformation package \
+            --template-file cloudformation/backend.yaml \
+            --s3-bucket "${{ env.ARTIFACTS_BUCKET }}" \
+            --s3-prefix "cfn-artifacts/$(date +%Y%m%d-%H%M%S)" \
+            --output-template-file packaged-backend.yaml
+
+      - name: Deploy backend stack
+        run: |
+          aws cloudformation deploy \
+            --template-file packaged-backend.yaml \
+            --stack-name "${{ env.BACKEND_STACK }}" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides StageName=live \
+            --no-fail-on-empty-changeset \
+            --tags Project=rozelle-stream DeployedBy=github-actions Commit=${{ github.sha }}
+
+      - name: Seed default state if table is empty
+        run: |
+          COUNT=$(aws dynamodb scan --table-name rozelle-stream-state --select COUNT --query "Count" --output text)
+          if [ "$COUNT" = "0" ]; then
+            aws dynamodb put-item --table-name rozelle-stream-state --item '{
+              "id":              {"S": "current"},
+              "currentSegment":  {"S": "Beat Making Session"},
+              "currentStatus":   {"S": "ON NOW"},
+              "comingUp":        {"S": "Stand-Up Comedy Set"},
+              "latestProject":   {"S": "New EP - Coming Soon"},
+              "latestProjectMeta": {"S": "2026"}
+            }'
+          fi
+
+  deploy-hosting:
+    name: Deploy Hosting Stack
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.hosting == 'true' || github.event_name == 'workflow_dispatch'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy hosting stack
+        run: |
+          aws cloudformation deploy \
+            --template-file cloudformation/hosting.yaml \
+            --stack-name "${{ env.HOSTING_STACK }}" \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset \
+            --tags Project=rozelle-stream DeployedBy=github-actions Commit=${{ github.sha }}
+
+      - name: Show outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name "${{ env.HOSTING_STACK }}" \
+            --query "Stacks[0].Outputs" --output table
+
+  deploy-static:
+    name: Deploy Static Files
+    runs-on: ubuntu-latest
+    needs: [changes, deploy-backend, deploy-hosting]
+    if: |
+      always() &&
+      (needs.changes.outputs.static == 'true' ||
+       needs.deploy-backend.result == 'success' ||
+       needs.deploy-hosting.result == 'success' ||
+       github.event_name == 'workflow_dispatch')
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get stack outputs
+        id: outputs
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks --stack-name "${{ env.HOSTING_STACK }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
+          DIST_ID=$(aws cloudformation describe-stacks --stack-name "${{ env.HOSTING_STACK }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" --output text)
+          API_URL=$(aws cloudformation describe-stacks --stack-name "${{ env.BACKEND_STACK }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
+          echo "bucket=$BUCKET"   >> $GITHUB_OUTPUT
+          echo "dist_id=$DIST_ID" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+
+      - name: Inject live API URL into static files
+        run: |
+          API_URL="${{ steps.outputs.outputs.api_url }}"
+          sed -i "s|YOUR_API_GATEWAY_URL/state|$API_URL|g" static/streamadmin/index.html
+          sed -i "s|YOUR_API_GATEWAY_URL/state|$API_URL|g" static/overlay.html
+
+      - name: Sync HTML (no-cache)
+        run: |
+          aws s3 sync static/ "s3://${{ steps.outputs.outputs.bucket }}/" \
+            --exclude "*" --include "*.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html; charset=utf-8" --delete
+
+      - name: Sync assets (long-cache)
+        run: |
+          aws s3 sync static/ "s3://${{ steps.outputs.outputs.bucket }}/" \
+            --exclude "*.html" \
+            --cache-control "public, max-age=31536000, immutable" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          DIST_ID="${{ steps.outputs.outputs.dist_id }}"
+          INV_ID=$(aws cloudfront create-invalidation --distribution-id "$DIST_ID" \
+            --paths "/*" --query "Invalidation.Id" --output text)
+          aws cloudfront wait invalidation-completed --distribution-id "$DIST_ID" --id "$INV_ID"
+          echo "Cache cleared. Live at: https://${{ env.DOMAIN }}/streamadmin"
+
+      - name: Summary
+        run: |
+          echo "## Rozelle Stream Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource | URL |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Stream Admin | https://rozellerz.com/streamadmin |" >> $GITHUB_STEP_SUMMARY
+          echo "| API | ${{ steps.outputs.outputs.api_url }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
