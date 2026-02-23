@@ -9,8 +9,6 @@ Parameters:
     Default: live
     Description: API Gateway stage name
 
-Globals: {}
-
 Resources:
 
   # ── DynamoDB ────────────────────────────────────────────────────────────────
