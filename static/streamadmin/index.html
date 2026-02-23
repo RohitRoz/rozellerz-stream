@@ -318,16 +318,30 @@
       document.getElementById(map[field]).value = value;
     }
 
-    async function loadState() {
+    const FIELD_MAP = {
+      'inp-current':      'currentSegment',
+      'inp-status':       'currentStatus',
+      'inp-coming':       'comingUp',
+      'inp-project':      'latestProject',
+      'inp-project-meta': 'latestProjectMeta',
+    };
+    const DEFAULTS = { 'inp-status': 'ON NOW' };
+    let focusedField = null;
+    Object.keys(FIELD_MAP).forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('focus', () => focusedField = id);
+      el.addEventListener('blur',  () => focusedField = null);
+    });
+
+    async function loadState(force = false) {
       try {
         const res = await fetch(API_URL, { cache: 'no-store' });
         if (!res.ok) throw new Error(res.status);
         const d = await res.json();
-        document.getElementById('inp-current').value      = d.currentSegment    ?? '';
-        document.getElementById('inp-status').value       = d.currentStatus     ?? 'ON NOW';
-        document.getElementById('inp-coming').value       = d.comingUp          ?? '';
-        document.getElementById('inp-project').value      = d.latestProject     ?? '';
-        document.getElementById('inp-project-meta').value = d.latestProjectMeta ?? '';
+        Object.entries(FIELD_MAP).forEach(([id, key]) => {
+          if (!force && focusedField === id) return; // don't overwrite while user is typing
+          document.getElementById(id).value = d[key] ?? DEFAULTS[id] ?? '';
+        });
         document.getElementById('prev-current').textContent = d.currentSegment ?? '—';
         document.getElementById('prev-coming').textContent  = d.comingUp       ?? '—';
         document.getElementById('prev-project').textContent = d.latestProject  ?? '—';
@@ -364,7 +378,7 @@
         document.getElementById('prev-project').textContent = payload.latestProject  || '—';
         showToast('✓  Stream updated', 'ok');
         setConnStatus(true);
-        setTimeout(loadState, 800); // re-sync preview from server
+        setTimeout(() => loadState(true), 800); // force re-sync after push
       } catch (e) {
         showToast('Update failed — check API URL', 'err');
         setConnStatus(false);
@@ -374,7 +388,7 @@
       }
     }
 
-    loadState();
+    loadState(true);
     setInterval(loadState, 5000);
   </script>
 </body>
