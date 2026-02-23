@@ -1,7 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >
-  Rozelle Hosting — S3 origin, CloudFront distribution for rozellerz.com,
-  Route53 A/AAAA alias records. Serves /streamadmin from S3.
+Description: Hosting stack. S3 origin, CloudFront distribution, Route53 DNS records.
 
 Parameters:
   DomainName:
@@ -11,12 +9,10 @@ Parameters:
   AcmCertificateArn:
     Type: String
     Default: arn:aws:acm:us-east-1:882951811364:certificate/4f22715e-3c41-4c9e-98e8-f4cc630eef7b
-    Description: ACM certificate ARN (must be in us-east-1 for CloudFront)
 
   HostedZoneId:
     Type: String
     Default: Z0887402FNNIMV65C4G1
-    Description: Route53 hosted zone ID for rozellerz.com
 
 Resources:
 
@@ -33,9 +29,6 @@ Resources:
         RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
-      Tags:
-        - Key: Project
-          Value: rozelle-stream
 
   OriginAccessControl:
     Type: AWS::CloudFront::OriginAccessControl
@@ -68,7 +61,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Sub ${DomainName} website + stream admin
+        Comment: Website distribution
         Aliases:
           - !Ref DomainName
           - !Sub www.${DomainName}
@@ -128,14 +121,10 @@ Resources:
         IPV6Enabled: true
         PriceClass: PriceClass_100
 
-      Tags:
-        - Key: Project
-          Value: rozelle-stream
-
   RewriteIndexFunction:
     Type: AWS::CloudFront::Function
     Properties:
-      Name: rozelle-rewrite-index
+      Name: rewrite-index
       AutoPublish: true
       FunctionConfig:
         Comment: Rewrite directory requests to index.html
@@ -186,27 +175,27 @@ Resources:
 
 Outputs:
   BucketName:
-    Description: S3 bucket name for website files
+    Description: S3 bucket name
     Value: !Ref WebsiteBucket
     Export:
       Name: !Sub ${AWS::StackName}-BucketName
 
   DistributionId:
-    Description: CloudFront distribution ID (needed for cache invalidation)
+    Description: CloudFront distribution ID
     Value: !Ref CloudFrontDistribution
     Export:
       Name: !Sub ${AWS::StackName}-DistributionId
 
   DistributionDomain:
-    Description: CloudFront domain name
+    Description: CloudFront domain
     Value: !GetAtt CloudFrontDistribution.DomainName
     Export:
       Name: !Sub ${AWS::StackName}-DistributionDomain
 
   WebsiteUrl:
-    Description: Live website URL
+    Description: Website URL
     Value: !Sub https://${DomainName}
 
   AdminUrl:
-    Description: Stream admin panel URL
+    Description: Admin panel URL
     Value: !Sub https://${DomainName}/streamadmin

@@ -1,14 +1,24 @@
-# rozelle-stream
+# stream-infra
 
-Infrastructure-as-code and static files for Rozelle's stream setup.
+IaC and static files for live stream tooling.
 
 ## Structure
 
 ```
-.github/workflows/deploy.yml   → GitHub Actions: deploys on push to main
-cloudformation/backend.yaml    → DynamoDB + Lambda + API Gateway
-cloudformation/hosting.yaml    → S3 + CloudFront + Route53 (rozellerz.com)
-lambda/lambda_function.py      → Stream state API handler
-static/streamadmin/index.html  → Admin dashboard → rozellerz.com/streamadmin
-static/overlay.html            → OBS Browser Source overlay
+.github/workflows/deploy.yml
+cloudformation/backend.yaml
+cloudformation/hosting.yaml
+lambda/lambda_function.py
+static/streamadmin/index.html
+static/overlay.html
 ```
+
+## Setup
+
+Add to GitHub repository secrets and variables before running the workflow.
+
+Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+
+Variables: AWS_ACCOUNT_ID
+
+Trigger deploy manually via Actions tab.
