@@ -114,6 +114,47 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Cleanup conflicting resources
+        run: |
+          BUCKET="rozellerz.com-website"
+          OAC_NAME="rozellerz.com-oac"
+          CF_FN_NAME="rewrite-index"
+
+          # Delete S3 bucket if it exists
+          if aws s3 ls "s3://$BUCKET" 2>/dev/null; then
+            aws s3 rm "s3://$BUCKET" --recursive 2>/dev/null || true
+            aws s3 rb "s3://$BUCKET" 2>/dev/null || true
+            echo "Deleted bucket: $BUCKET"
+          fi
+
+          # Delete CloudFront OAC by name if it exists
+          OAC_ID=$(aws cloudfront list-origin-access-controls \
+            --query "OriginAccessControlList.Items[?Name=='$OAC_NAME'].Id" \
+            --output text 2>/dev/null)
+          if [ -n "$OAC_ID" ] && [ "$OAC_ID" != "None" ]; then
+            ETAG=$(aws cloudfront get-origin-access-control --id "$OAC_ID" --query "ETag" --output text)
+            aws cloudfront delete-origin-access-control --id "$OAC_ID" --if-match "$ETAG" 2>/dev/null || true
+            echo "Deleted OAC: $OAC_ID"
+          fi
+
+          # Delete CloudFront function by name if it exists
+          FN_ETAG=$(aws cloudfront describe-function --name "$CF_FN_NAME" \
+            --query "ETag" --output text 2>/dev/null)
+          if [ -n "$FN_ETAG" ] && [ "$FN_ETAG" != "None" ]; then
+            aws cloudfront delete-function --name "$CF_FN_NAME" --if-match "$FN_ETAG" 2>/dev/null || true
+            echo "Deleted CF function: $CF_FN_NAME"
+          fi
+
+          # Delete stack if stuck in ROLLBACK_COMPLETE
+          STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.HOSTING_STACK }}" \
+            --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+            aws cloudformation delete-stack --stack-name "${{ env.HOSTING_STACK }}"
+            aws cloudformation wait stack-delete-complete --stack-name "${{ env.HOSTING_STACK }}" || true
+            echo "Deleted stuck stack: ${{ env.HOSTING_STACK }}"
+          fi
+
       - name: Deploy hosting stack
         run: |
           aws cloudformation deploy \
