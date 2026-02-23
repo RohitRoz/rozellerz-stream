@@ -6,9 +6,9 @@ on:
 env:
   AWS_REGION: us-east-1
   BACKEND_STACK: rozelle-stream-backend
-  HOSTING_STACK: rozelle-stream-hosting
   ARTIFACTS_BUCKET: rozelle-stream-artifacts-${{ vars.AWS_ACCOUNT_ID }}
-  DOMAIN: rozellerz.com
+  PROD_BUCKET: rozellerz.com
+  PROD_DIST_ID: E1DASKPD203KZ1
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      hosting: ${{ steps.filter.outputs.hosting }}
       static:  ${{ steps.filter.outputs.static }}
     steps:
       - uses: actions/checkout@v4
@@ -31,8 +30,6 @@ jobs:
             backend:
               - 'lambda/**'
               - 'cloudformation/backend.yaml'
-            hosting:
-              - 'cloudformation/hosting.yaml'
             static:
               - 'static/**'
 
@@ -54,16 +51,20 @@ jobs:
 
       - name: Cleanup conflicting resources
         run: |
-          aws dynamodb delete-table --table-name rozelle-stream-state --region ${{ env.AWS_REGION }} 2>/dev/null || true
-          aws dynamodb wait table-not-exists --table-name rozelle-stream-state --region ${{ env.AWS_REGION }} 2>/dev/null || true
+          aws dynamodb delete-table --table-name rozelle-stream-state 2>/dev/null || true
+          aws dynamodb wait table-not-exists --table-name rozelle-stream-state 2>/dev/null || true
 
       - name: Ensure artifacts bucket exists
         run: |
           if ! aws s3 ls "s3://${{ env.ARTIFACTS_BUCKET }}" 2>/dev/null; then
             aws s3 mb "s3://${{ env.ARTIFACTS_BUCKET }}" --region ${{ env.AWS_REGION }}
-            aws s3api put-bucket-versioning --bucket "${{ env.ARTIFACTS_BUCKET }}" --versioning-configuration Status=Enabled
-            aws s3api put-public-access-block --bucket "${{ env.ARTIFACTS_BUCKET }}" \
-              --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+            aws s3api put-bucket-versioning \
+              --bucket "${{ env.ARTIFACTS_BUCKET }}" \
+              --versioning-configuration Status=Enabled
+            aws s3api put-public-access-block \
+              --bucket "${{ env.ARTIFACTS_BUCKET }}" \
+              --public-access-block-configuration \
+              BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
           fi
 
       - name: Package CloudFormation
@@ -86,110 +87,27 @@ jobs:
 
       - name: Seed default state if table is empty
         run: |
-          COUNT=$(aws dynamodb scan --table-name rozelle-stream-state --select COUNT --query "Count" --output text)
+          COUNT=$(aws dynamodb scan --table-name rozelle-stream-state \
+            --select COUNT --query "Count" --output text)
           if [ "$COUNT" = "0" ]; then
             aws dynamodb put-item --table-name rozelle-stream-state --item '{
-              "id":              {"S": "current"},
-              "currentSegment":  {"S": "Beat Making Session"},
-              "currentStatus":   {"S": "ON NOW"},
-              "comingUp":        {"S": "Stand-Up Comedy Set"},
-              "latestProject":   {"S": "New EP - Coming Soon"},
+              "id":                {"S": "current"},
+              "currentSegment":    {"S": "Beat Making Session"},
+              "currentStatus":     {"S": "ON NOW"},
+              "comingUp":          {"S": "Stand-Up Comedy Set"},
+              "latestProject":     {"S": "New EP - Coming Soon"},
               "latestProjectMeta": {"S": "2026"}
             }'
           fi
 
-  deploy-hosting:
-    name: Deploy Hosting Stack
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.hosting == 'true' || github.event_name == 'workflow_dispatch'
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Cleanup conflicting resources
-        run: |
-          set +e
-
-          # Only clean up orphaned resources if stack doesn't exist yet
-          STATUS=$(aws cloudformation describe-stacks \
-            --stack-name "${{ env.HOSTING_STACK }}" \
-            --query "Stacks[0].StackStatus" --output text 2>/dev/null)
-
-          if [ -z "$STATUS" ] || [ "$STATUS" = "None" ] || \
-             [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
-
-            echo "Stack absent or stuck ($STATUS) — cleaning up orphaned resources"
-
-            # S3 bucket
-            if aws s3 ls "s3://rozelle-stream-website" 2>/dev/null; then
-              aws s3 rm "s3://rozelle-stream-website" --recursive 2>/dev/null
-              aws s3 rb "s3://rozelle-stream-website" 2>/dev/null
-              echo "Deleted bucket"
-            fi
-
-            # OAC
-            OAC_ID=$(aws cloudfront list-origin-access-controls \
-              --query "OriginAccessControlList.Items[?Name=='rozelle-stream-oac'].Id" \
-              --output text 2>/dev/null)
-            if [ -n "$OAC_ID" ] && [ "$OAC_ID" != "None" ]; then
-              ETAG=$(aws cloudfront get-origin-access-control --id "$OAC_ID" --query "ETag" --output text 2>/dev/null)
-              aws cloudfront delete-origin-access-control --id "$OAC_ID" --if-match "$ETAG" 2>/dev/null
-              echo "Deleted OAC: $OAC_ID"
-            fi
-
-            # CloudFront function
-            FN_ETAG=$(aws cloudfront describe-function --name "rozelle-stream-rewrite" \
-              --query "ETag" --output text 2>/dev/null)
-            if [ -n "$FN_ETAG" ] && [ "$FN_ETAG" != "None" ]; then
-              aws cloudfront delete-function --name "rozelle-stream-rewrite" --if-match "$FN_ETAG" 2>/dev/null
-              echo "Deleted CF function"
-            fi
-
-            # Delete stuck stack
-            if [ "$STATUS" = "ROLLBACK_COMPLETE" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
-              aws cloudformation delete-stack --stack-name "${{ env.HOSTING_STACK }}"
-              aws cloudformation wait stack-delete-complete --stack-name "${{ env.HOSTING_STACK }}" 2>/dev/null
-              echo "Deleted stuck stack"
-            fi
-
-          else
-            echo "Stack exists with status $STATUS — skipping cleanup"
-          fi
-
-          exit 0
-
-      - name: Deploy hosting stack
-        run: |
-          aws cloudformation deploy \
-            --template-file cloudformation/hosting.yaml \
-            --stack-name "${{ env.HOSTING_STACK }}" \
-            --capabilities CAPABILITY_IAM \
-            --no-fail-on-empty-changeset \
-            --tags Project=rozelle-stream DeployedBy=github-actions Commit=${{ github.sha }}
-
-      - name: Show outputs
-        run: |
-          aws cloudformation describe-stacks \
-            --stack-name "${{ env.HOSTING_STACK }}" \
-            --query "Stacks[0].Outputs" --output table
-
   deploy-static:
     name: Deploy Static Files
     runs-on: ubuntu-latest
-    needs: [changes, deploy-backend, deploy-hosting]
+    needs: [changes, deploy-backend]
     if: |
       always() &&
       (needs.changes.outputs.static == 'true' ||
        needs.deploy-backend.result == 'success' ||
-       needs.deploy-hosting.result == 'success' ||
        github.event_name == 'workflow_dispatch')
     permissions:
       id-token: write
@@ -202,45 +120,43 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Get stack outputs
+      - name: Get API URL
         id: outputs
         run: |
-          BUCKET=$(aws cloudformation describe-stacks --stack-name "${{ env.HOSTING_STACK }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" --output text)
-          DIST_ID=$(aws cloudformation describe-stacks --stack-name "${{ env.HOSTING_STACK }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" --output text)
-          API_URL=$(aws cloudformation describe-stacks --stack-name "${{ env.BACKEND_STACK }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
-          echo "bucket=$BUCKET"   >> $GITHUB_OUTPUT
-          echo "dist_id=$DIST_ID" >> $GITHUB_OUTPUT
+          API_URL=$(aws cloudformation describe-stacks \
+            --stack-name "${{ env.BACKEND_STACK }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+            --output text)
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
 
-      - name: Inject live API URL into static files
+      - name: Inject API URL into static files
         run: |
           API_URL="${{ steps.outputs.outputs.api_url }}"
           sed -i "s|YOUR_API_GATEWAY_URL/state|$API_URL|g" static/streamadmin/index.html
           sed -i "s|YOUR_API_GATEWAY_URL/state|$API_URL|g" static/overlay.html
 
-      - name: Sync HTML (no-cache)
+      - name: Sync HTML to prod bucket (no-cache)
         run: |
-          aws s3 sync static/ "s3://${{ steps.outputs.outputs.bucket }}/" \
+          aws s3 sync static/ "s3://${{ env.PROD_BUCKET }}/" \
             --exclude "*" --include "*.html" \
             --cache-control "no-cache, no-store, must-revalidate" \
-            --content-type "text/html; charset=utf-8" --delete
+            --content-type "text/html; charset=utf-8"
 
-      - name: Sync assets (long-cache)
+      - name: Sync assets to prod bucket (long-cache)
         run: |
-          aws s3 sync static/ "s3://${{ steps.outputs.outputs.bucket }}/" \
+          aws s3 sync static/ "s3://${{ env.PROD_BUCKET }}/" \
             --exclude "*.html" \
-            --cache-control "public, max-age=31536000, immutable" --delete
+            --cache-control "public, max-age=31536000, immutable"
 
       - name: Invalidate CloudFront cache
         run: |
-          DIST_ID="${{ steps.outputs.outputs.dist_id }}"
-          INV_ID=$(aws cloudfront create-invalidation --distribution-id "$DIST_ID" \
-            --paths "/*" --query "Invalidation.Id" --output text)
-          aws cloudfront wait invalidation-completed --distribution-id "$DIST_ID" --id "$INV_ID"
-          echo "Cache cleared. Live at: https://${{ env.DOMAIN }}/streamadmin"
+          INV_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${{ env.PROD_DIST_ID }}" \
+            --paths "/streamadmin" "/streamadmin/*" "/overlay.html" \
+            --query "Invalidation.Id" --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "${{ env.PROD_DIST_ID }}" --id "$INV_ID"
+          echo "Live at: https://rozellerz.com/streamadmin"
 
       - name: Summary
         run: |
@@ -248,5 +164,6 @@ jobs:
           echo "| Resource | URL |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Stream Admin | https://rozellerz.com/streamadmin |" >> $GITHUB_STEP_SUMMARY
+          echo "| Overlay | https://rozellerz.com/overlay.html |" >> $GITHUB_STEP_SUMMARY
           echo "| API | ${{ steps.outputs.outputs.api_url }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
