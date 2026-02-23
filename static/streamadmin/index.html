@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Rozelle — Stream Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono&display=swap" rel="stylesheet"/>
+
+  <style>
+    :root {
+      --green:      #1a7a4a;
+      --green-mid:  #22a060;
+      --green-pale: #edfaf3;
+      --dark:       #0d2a1a;
+      --muted:      #2d5c3f;
+      --bg:         #f0f7f3;
+      --card:       #ffffff;
+      --border:     rgba(26,122,74,0.25);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--dark);
+      min-height: 100vh;
+      padding: 0 0 60px;
+    }
+
+    header {
+      background: var(--green);
+      padding: 18px 20px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { font-size: 22px; font-weight: 800; letter-spacing: 2px; color: white; }
+    .logo span { color: rgba(255,255,255,0.5); font-style: italic; }
+    #conn-status {
+      display: flex; align-items: center; gap: 7px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px; letter-spacing: 2px;
+      color: rgba(255,255,255,0.6);
+    }
+    #conn-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      transition: background 0.3s;
+    }
+    #conn-dot.ok  { background: #6ee7a8; box-shadow: 0 0 6px rgba(110,231,168,0.5); }
+    #conn-dot.err { background: #f87171; }
+
+    #preview-bar {
+      margin: 16px;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .preview-label {
+      font-size: 9px; font-weight: 700; letter-spacing: 4px;
+      color: var(--green); opacity: 0.6;
+      margin-bottom: 10px;
+    }
+    .preview-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .preview-field { font-size: 12px; }
+    .preview-field-label {
+      font-size: 8px; letter-spacing: 3px; font-weight: 700;
+      color: var(--green); opacity: 0.55;
+      margin-bottom: 3px;
+    }
+    .preview-field-val {
+      font-weight: 700; font-size: 13px;
+      color: var(--dark);
+      line-height: 1.3;
+      word-break: break-word;
+    }
+    .preview-field-val.loading { opacity: 0.3; }
+
+    .card {
+      margin: 0 16px 16px;
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card-header {
+      background: var(--green-pale);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .card-num {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--green);
+      color: white; font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .card-title { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--dark); }
+    .card-body { padding: 14px 16px; }
+
+    .field { margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+    label {
+      display: block;
+      font-size: 9px; font-weight: 700; letter-spacing: 3px;
+      color: var(--green);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    input, select {
+      width: 100%;
+      padding: 11px 13px;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      font-family: 'Syne', sans-serif;
+      font-size: 14px; font-weight: 600;
+      color: var(--dark);
+      background: var(--bg);
+      outline: none;
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus { border-color: var(--green-mid); background: white; }
+
+    .btn-row { display: flex; gap: 10px; margin: 0 16px 16px; }
+    button {
+      flex: 1;
+      padding: 15px;
+      border: none; border-radius: 8px;
+      font-family: 'Syne', sans-serif;
+      font-size: 13px; font-weight: 700;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-transform: uppercase;
+    }
+    #btn-update { background: var(--green); color: white; }
+    #btn-update:hover { background: #155f3a; }
+    #btn-update:active { transform: scale(0.98); }
+    #btn-update:disabled { background: rgba(26,122,74,0.35); cursor: wait; }
+    #btn-refresh {
+      background: transparent;
+      color: var(--green);
+      border: 1.5px solid var(--border);
+      flex: 0 0 50px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    #btn-refresh:hover { background: var(--green-pale); }
+
+    #toast {
+      position: fixed;
+      bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--dark);
+      color: white;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px; letter-spacing: 1px;
+      padding: 11px 22px;
+      border-radius: 30px;
+      transition: transform 0.3s ease;
+      white-space: nowrap;
+      z-index: 100;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+    #toast.ok   { background: var(--green); }
+    #toast.err  { background: #b91c1c; }
+
+    .presets { display: flex; gap: 8px; flex-wrap: wrap; }
+    .preset-btn {
+      flex: none;
+      padding: 6px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 20px;
+      background: var(--bg);
+      font-family: 'Syne', sans-serif;
+      font-size: 11px; font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: 0.5px;
+    }
+    .preset-btn:hover { background: var(--green-pale); border-color: var(--green-mid); color: var(--green); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">ROZ<span>E</span>LLE</div>
+    <div id="conn-status">
+      <div id="conn-dot"></div>
+      <span id="conn-label">CONNECTING</span>
+    </div>
+  </header>
+
+  <div id="preview-bar">
+    <div class="preview-label">LIVE ON STREAM NOW</div>
+    <div class="preview-fields">
+      <div class="preview-field">
+        <div class="preview-field-label">NOW</div>
+        <div class="preview-field-val loading" id="prev-current">—</div>
+      </div>
+      <div class="preview-field">
+        <div class="preview-field-label">UP NEXT</div>
+        <div class="preview-field-val loading" id="prev-coming">—</div>
+      </div>
+      <div class="preview-field">
+        <div class="preview-field-label">PROJECT</div>
+        <div class="preview-field-val loading" id="prev-project">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num">1</div>
+      <div class="card-title">CURRENT SEGMENT</div>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label>Segment Name</label>
+        <input type="text" id="inp-current" placeholder="e.g. Beat Making Session"/>
+      </div>
+      <div class="field">
+        <label>Status Badge</label>
+        <select id="inp-status">
+          <option value="ON NOW">ON NOW</option>
+          <option value="STARTING">STARTING</option>
+          <option value="BRB">BRB</option>
+          <option value="WRAPPING UP">WRAPPING UP</option>
+          <option value="LIVE">LIVE</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Quick Presets</label>
+        <div class="presets">
+          <button class="preset-btn" onclick="setPreset('current','Beat Making Session')">Beats</button>
+          <button class="preset-btn" onclick="setPreset('current','Stand-Up Comedy Set')">Comedy</button>
+          <button class="preset-btn" onclick="setPreset('current','Q&amp;A / Chat')">Q&amp;A</button>
+          <button class="preset-btn" onclick="setPreset('current','Freestyle Session')">Freestyle</button>
+          <button class="preset-btn" onclick="setPreset('current','Collab Stream')">Collab</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num">2</div>
+      <div class="card-title">COMING UP</div>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label>Next Segment</label>
+        <input type="text" id="inp-coming" placeholder="e.g. Stand-Up Comedy Set"/>
+      </div>
+      <div class="field">
+        <label>Quick Presets</label>
+        <div class="presets">
+          <button class="preset-btn" onclick="setPreset('coming','Beat Making Session')">Beats</button>
+          <button class="preset-btn" onclick="setPreset('coming','Stand-Up Comedy Set')">Comedy</button>
+          <button class="preset-btn" onclick="setPreset('coming','Q&amp;A / Chat')">Q&amp;A</button>
+          <button class="preset-btn" onclick="setPreset('coming','Freestyle Session')">Freestyle</button>
+          <button class="preset-btn" onclick="setPreset('coming','Nothing — end of stream')">End</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num">3</div>
+      <div class="card-title">LATEST PROJECT</div>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label>Project Name</label>
+        <input type="text" id="inp-project" placeholder="e.g. New EP — Coming Soon"/>
+      </div>
+      <div class="field">
+        <label>Meta / Date</label>
+        <input type="text" id="inp-project-meta" placeholder="e.g. Feb 2026  •  Out Now"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button id="btn-update" onclick="pushUpdate()">Push to Stream</button>
+    <button id="btn-refresh" onclick="loadState()" title="Refresh">↺</button>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    const API_URL = 'YOUR_API_GATEWAY_URL/state';
+
+    const connDot   = document.getElementById('conn-dot');
+    const connLabel = document.getElementById('conn-label');
+
+    function setConnStatus(ok) {
+      connDot.className    = ok ? 'ok' : 'err';
+      connLabel.textContent = ok ? 'CONNECTED' : 'OFFLINE';
+    }
+
+    function showToast(msg, type = 'ok') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = `show ${type}`;
+      setTimeout(() => t.className = '', 2500);
+    }
+
+    function setPreset(field, value) {
+      const map = { current: 'inp-current', coming: 'inp-coming' };
+      document.getElementById(map[field]).value = value;
+    }
+
+    async function loadState() {
+      try {
+        const res = await fetch(API_URL, { cache: 'no-store' });
+        if (!res.ok) throw new Error(res.status);
+        const d = await res.json();
+        document.getElementById('inp-current').value      = d.currentSegment    ?? '';
+        document.getElementById('inp-status').value       = d.currentStatus     ?? 'ON NOW';
+        document.getElementById('inp-coming').value       = d.comingUp          ?? '';
+        document.getElementById('inp-project').value      = d.latestProject     ?? '';
+        document.getElementById('inp-project-meta').value = d.latestProjectMeta ?? '';
+        document.getElementById('prev-current').textContent = d.currentSegment ?? '—';
+        document.getElementById('prev-coming').textContent  = d.comingUp       ?? '—';
+        document.getElementById('prev-project').textContent = d.latestProject  ?? '—';
+        ['prev-current','prev-coming','prev-project'].forEach(id => {
+          document.getElementById(id).classList.remove('loading');
+        });
+        setConnStatus(true);
+      } catch (e) {
+        setConnStatus(false);
+        showToast('Could not reach API', 'err');
+      }
+    }
+
+    async function pushUpdate() {
+      const btn = document.getElementById('btn-update');
+      btn.disabled = true;
+      btn.textContent = 'PUSHING...';
+      const payload = {
+        currentSegment:    document.getElementById('inp-current').value.trim(),
+        currentStatus:     document.getElementById('inp-status').value,
+        comingUp:          document.getElementById('inp-coming').value.trim(),
+        latestProject:     document.getElementById('inp-project').value.trim(),
+        latestProjectMeta: document.getElementById('inp-project-meta').value.trim(),
+      };
+      try {
+        const res = await fetch(API_URL, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(res.status);
+        document.getElementById('prev-current').textContent = payload.currentSegment || '—';
+        document.getElementById('prev-coming').textContent  = payload.comingUp       || '—';
+        document.getElementById('prev-project').textContent = payload.latestProject  || '—';
+        showToast('✓  Stream updated', 'ok');
+        setConnStatus(true);
+      } catch (e) {
+        showToast('Update failed — check API URL', 'err');
+        setConnStatus(false);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Push to Stream';
+      }
+    }
+
+    loadState();
+    setInterval(loadState, 15000);
+  </script>
+</body>
+</html>

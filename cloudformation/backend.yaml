@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Rozelle Stream Backend — DynamoDB state table, Lambda handler,
+  API Gateway (GET /state + PUT /state) with CORS.
+
+Parameters:
+  StageName:
+    Type: String
+    Default: live
+    Description: API Gateway stage name
+
+Globals: {}
+
+Resources:
+
+  # ── DynamoDB ────────────────────────────────────────────────────────────────
+  StreamStateTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: rozelle-stream-state
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: rozelle-stream
+
+  # ── IAM Role ────────────────────────────────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rozelle-stream-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoStreamState
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt StreamStateTable.Arn
+
+  # ── Lambda ──────────────────────────────────────────────────────────────────
+  StreamStateLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: rozelle-stream-state
+      Runtime: python3.12
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code: ../lambda
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref StreamStateTable
+      Tags:
+        - Key: Project
+          Value: rozelle-stream
+
+  # ── API Gateway ─────────────────────────────────────────────────────────────
+  StreamApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: rozelle-stream-api
+      Description: Rozelle stream state REST API
+      EndpointConfiguration:
+        Types: [EDGE]
+      Tags:
+        - Key: Project
+          Value: rozelle-stream
+
+  StateResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref StreamApi
+      ParentId: !GetAtt StreamApi.RootResourceId
+      PathPart: state
+
+  GetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref StreamApi
+      ResourceId: !Ref StateResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt StreamStateLambda.Arn
+
+  PutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref StreamApi
+      ResourceId: !Ref StateResource
+      HttpMethod: PUT
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt StreamStateLambda.Arn
+
+  OptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref StreamApi
+      ResourceId: !Ref StateResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - LambdaArn: !GetAtt StreamStateLambda.Arn
+
+  LambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt StreamStateLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${StreamApi}/*/*/state
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - GetMethod
+      - PutMethod
+      - OptionsMethod
+    Properties:
+      RestApiId: !Ref StreamApi
+      Description: !Sub Deployed by GitHub Actions - ${AWS::StackName}
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref StreamApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: !Ref StageName
+      Tags:
+        - Key: Project
+          Value: rozelle-stream
+
+Outputs:
+  ApiUrl:
+    Description: Stream state API endpoint
+    Value: !Sub https://${StreamApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/state
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiUrl
+
+  LambdaArn:
+    Description: Lambda function ARN
+    Value: !GetAtt StreamStateLambda.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-LambdaArn
+
+  TableName:
+    Description: DynamoDB table name
+    Value: !Ref StreamStateTable
+    Export:
+      Name: !Sub ${AWS::StackName}-TableName
